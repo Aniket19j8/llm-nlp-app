@@ -1,0 +1,29 @@
+version: "3.9"
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - ENABLE_EXPLANATIONS=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ui:
+    image: python:3.11-slim
+    working_dir: /ui
+    command: bash -lc "pip install streamlit requests pandas && streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0"
+    volumes:
+      - ./ui:/ui
+    environment:
+      - BACKEND_URL=http://api:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api

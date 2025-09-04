@@ -1,0 +1,38 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.cache/
+.hypothesis/
+
+# Env & secrets
+.env
+.env.* 
+*.key
+*.pem
+
+# Tools & IDE
+.DS_Store
+.vscode/
+.idea/
+
+# HF / model caches
+.huggingface/
+.cache/huggingface/
+transformers_cache/
+datasets/
+models/
+checkpoints/
+
+# Streamlit
+.streamlit/
+
+# OS
+Thumbs.db
+
+# Docker
+**/.dockerignore
