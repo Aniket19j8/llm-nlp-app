@@ -14,6 +14,14 @@ COPY . .
 FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+# Make writable caches (HF/Transformers)
+ENV TRANSFORMERS_NO_TF=1 TRANSFORMERS_NO_FLAX=1
+ENV TRANSFORMERS_CACHE=/tmp/hf_cache \
+    HF_HOME=/tmp/hf_home \
+    HUGGINGFACE_HUB_CACHE=/tmp/hf_cache
+RUN mkdir -p /tmp/hf_cache /tmp/hf_home && chmod -R 777 /tmp/hf_cache /tmp/hf_home
+
 COPY --from=base /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=base /usr/local/bin /usr/local/bin
 COPY --from=base /app /app
