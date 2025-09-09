@@ -15,5 +15,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY --from=base /usr/local/lib/python3.11 /usr/local/lib/python3.11
 COPY --from=base /usr/local/bin /usr/local/bin
 COPY --from=base /app /app
-EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Spaces sets $PORT (defaults to 7860). Expose is optional but nice.
+EXPOSE 7860
+
+# Bind uvicorn to the port provided by Spaces
+CMD ["sh","-c","uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
