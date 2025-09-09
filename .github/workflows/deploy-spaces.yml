@@ -1,48 +1,72 @@
 name: deploy-to-hf-spaces
+
 on:
   push:
     branches: [ "main" ]
 
 jobs:
   deploy-api-space:
+    name: Deploy API Space (Docker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: git lfs install
-      - name: Push repo to API Space (Docker)
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Git LFS
+        run: git lfs install
+
+      - name: Push repo to API Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           API_SPACE: ${{ secrets.API_SPACE }}
+        shell: bash
         run: |
-          set -e
+          set -u  # (no 'set -e' so we can handle rsync=24)
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
+
           rm -rf api_space
-          git clone https://huggingface.co/spaces/${HF_USERNAME}/${API_SPACE} api_space
-          rsync -av --delete --exclude '.git' ./ api_space/
+          git clone "https://huggingface.co/spaces/${HF_USERNAME}/${API_SPACE}" api_space
+
+          # Mirror repo -> Space, but ignore rsync exit 24 ("vanished files")
+          rsync -av --delete --exclude '.git' ./ api_space/ || exit_code=$?
+          if [[ "${exit_code:-0}" != "0" && "${exit_code}" != "24" ]]; then
+            echo "rsync failed with exit ${exit_code}"; exit "${exit_code}";
+          fi
+
           cd api_space
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes for API Space."
+            echo "No changes to commit for API Space."
           else
             git commit -m "Auto-deploy API from $GITHUB_SHA"
-            git push https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${API_SPACE} HEAD:main
+            git push "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${API_SPACE}" HEAD:main
           fi
 
   deploy-ui-space:
+    name: Deploy UI Space (Streamlit)
     needs: deploy-api-space
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Prepare UI bundle (Streamlit)
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Prepare UI bundle (app file, minimal requirements, metadata)
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ui_bundle/ui
+          # Copy your Streamlit app from the repo
           cp -v ui/streamlit_app.py ui_bundle/ui/streamlit_app.py
+
+          # Minimal deps for Streamlit Space
           cat > ui_bundle/requirements.txt <<'EOF'
           streamlit==1.37.1
           requests==2.32.3
           EOF
+
+          # README front-matter tells Spaces how to run it
           cat > ui_bundle/README.md <<'EOF'
           ---
           title: llm-nlp-ui
@@ -50,23 +74,32 @@ jobs:
           app_file: ui/streamlit_app.py
           ---
           EOF
-      - name: Push UI bundle to UI Space
+
+      - name: Push bundle to UI Space
         env:
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           UI_SPACE: ${{ secrets.UI_SPACE }}
+        shell: bash
         run: |
-          set -e
+          set -u
           git config --global user.email "actions@github.com"
           git config --global user.name "GitHub Actions"
+
           rm -rf ui_space
-          git clone https://huggingface.co/spaces/${HF_USERNAME}/${UI_SPACE} ui_space
-          rsync -av --delete --exclude '.git' ui_bundle/ ui_space/
+          git clone "https://huggingface.co/spaces/${HF_USERNAME}/${UI_SPACE}" ui_space
+
+          # Sync bundle -> Space, ignore rsync exit 24
+          rsync -av --delete --exclude '.git' ui_bundle/ ui_space/ || exit_code=$?
+          if [[ "${exit_code:-0}" != "0" && "${exit_code}" != "24" ]]; then
+            echo "rsync failed with exit ${exit_code}"; exit "${exit_code}";
+          fi
+
           cd ui_space
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes for UI Space."
+            echo "No changes to commit for UI Space."
           else
             git commit -m "Auto-deploy UI from $GITHUB_SHA"
-            git push https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${UI_SPACE} HEAD:main
+            git push "https://${HF_USERNAME}:${HF_TOKEN}@huggingface.co/spaces/${HF_USERNAME}/${UI_SPACE}" HEAD:main
           fi
