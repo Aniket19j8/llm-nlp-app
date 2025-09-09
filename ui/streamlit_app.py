@@ -1,4 +1,12 @@
 # ui/streamlit_app.py
+# -- put these at the very top of ui/streamlit_app.py --
+import os, pathlib
+os.environ.setdefault("HOME", "/home/user")
+try:
+    pathlib.Path(os.path.expanduser("~/.streamlit")).mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
+
 import os
 import time
 import requests
