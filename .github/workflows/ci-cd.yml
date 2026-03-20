@@ -1,0 +1,147 @@
+# ============================================================
+# CI/CD Pipeline — Blue-Green Deployment with Smoke Tests
+# ============================================================
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_IMAGE: ghcr.io/${{ github.repository_owner }}/nlp-microservice
+  BLUE_PORT: 8000
+  GREEN_PORT: 8001
+
+jobs:
+  # ----------------------------------------------------------
+  # 1. Lint & Test
+  # ----------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run linter
+        run: |
+          pip install ruff
+          ruff check app/ --ignore E501
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  # ----------------------------------------------------------
+  # 2. Build & Push Docker Image
+  # ----------------------------------------------------------
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+            ${{ env.DOCKER_IMAGE }}:latest
+
+  # ----------------------------------------------------------
+  # 3. Blue-Green Deploy with Smoke Tests
+  # ----------------------------------------------------------
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Green instance
+        run: |
+          echo "🟢 Starting GREEN deployment on port $GREEN_PORT ..."
+          docker pull ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          docker run -d \
+            --name nlp-green \
+            -p ${{ env.GREEN_PORT }}:8000 \
+            -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            -e OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }} \
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+
+      - name: Wait for Green to be healthy
+        run: |
+          echo "⏳ Waiting for Green to pass health check ..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:${{ env.GREEN_PORT }}/health; then
+              echo "✅ Green is healthy!"
+              exit 0
+            fi
+            echo "  Attempt $i/30 ..."
+            sleep 10
+          done
+          echo "❌ Green failed health check"
+          exit 1
+
+      - name: Run smoke tests against Green
+        run: |
+          echo "🧪 Running smoke tests ..."
+
+          # Health check
+          curl -sf http://localhost:${{ env.GREEN_PORT }}/health | jq .
+
+          # Sentiment analysis
+          curl -sf -X POST http://localhost:${{ env.GREEN_PORT }}/api/v1/sentiment \
+            -H "Content-Type: application/json" \
+            -d '{"text": "This product is absolutely fantastic!"}' | jq .
+
+          # Summarization
+          curl -sf -X POST http://localhost:${{ env.GREEN_PORT }}/api/v1/summarize \
+            -H "Content-Type: application/json" \
+            -d '{"text": "Artificial intelligence is a broad field of computer science focused on creating intelligent machines. These machines can perform tasks that typically require human intelligence, such as visual perception, speech recognition, decision-making, and language translation. AI has been applied in many domains including healthcare, finance, transportation, and entertainment.", "max_length": 80, "min_length": 20}' | jq .
+
+          # NER
+          curl -sf -X POST http://localhost:${{ env.GREEN_PORT }}/api/v1/ner \
+            -H "Content-Type: application/json" \
+            -d '{"text": "Apple Inc. was founded by Steve Jobs in Cupertino, California."}' | jq .
+
+          echo "✅ All smoke tests passed!"
+
+      - name: Switch traffic Blue → Green
+        run: |
+          echo "🔄 Switching traffic from Blue to Green ..."
+          # In production, this would update a load balancer / reverse proxy
+          # For demo, we stop blue and rename green
+          docker stop nlp-blue 2>/dev/null || true
+          docker rm nlp-blue 2>/dev/null || true
+          docker rename nlp-green nlp-blue || true
+          echo "✅ Green is now Blue — deployment complete!"
+
+      - name: Cleanup on failure
+        if: failure()
+        run: |
+          echo "🧹 Rolling back — stopping Green ..."
+          docker stop nlp-green 2>/dev/null || true
+          docker rm nlp-green 2>/dev/null || true
+          echo "Blue remains active — rollback complete."
