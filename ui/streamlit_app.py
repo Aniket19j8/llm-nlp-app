@@ -33,7 +33,7 @@ tabs = st.tabs(["🔍 Sentiment", "✍️ Rewrite (Tone)"])
 
 # --- Sentiment tab ---
 with tabs[0]:
-    st.subheader("Sentiment Analysis (local PyTorch + Transformers)")
+    st.subheader("Sentiment Analysis (OpenAI ➜ OpenRouter fallback)")
     text = st.text_area("Enter text", height=140, key="sent_text", placeholder="Type something like: I absolutely love this!")
     col_a, col_b = st.columns([1,1])
     with col_a:
@@ -103,5 +103,4 @@ with tabs[1]:
                     st.error(f"Request failed: {e}")
 
 st.markdown("---")
-st.caption("Sentiment uses local DistilBERT (PyTorch+Transformers). Rewrite uses OpenAI, "
-           "with automatic fallback to OpenRouter (free Llama) if rate-limited.")
+st.caption("Sentiment and rewrite both use OpenAI, with automatic fallback to OpenRouter (free Llama) if needed.")

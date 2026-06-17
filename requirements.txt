@@ -5,11 +5,6 @@ pydantic==2.8.2
 pydantic-settings==2.4.0
 python-dotenv==1.0.1
 requests==2.32.3
+certifi>=2024.7.4
 prometheus-client==0.20.0
-# leave torch out; Dockerfile installs it first
-transformers==4.43.3
-tokenizers==0.19.1
-accelerate>=0.33.0
-huggingface-hub>=0.24.0
-safetensors>=0.4.4
-numpy<2
+streamlit>=1.37.0

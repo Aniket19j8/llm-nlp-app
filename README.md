@@ -8,4 +8,4 @@ app_port: 7860
 pinned: false
 ---
 
-FastAPI API for sentiment (local Transformers) + rewrite (OpenAI/OpenRouter fallback).
+FastAPI API for sentiment + rewrite (OpenAI/OpenRouter fallback).
